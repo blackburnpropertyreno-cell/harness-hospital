@@ -11,6 +11,9 @@
 - Triage and surgery now handle a scattered project: they start from the x-ray's report and gather the
   folders into one home by copying, never moving (`skills/harness-triage/references/gathering.md`).
 - The surgery plan and record gain a section for the folders and what happened to each.
+- Two fixes from a first run on Windows: `snapshot` now closes the ledger so a later `restore` can replace
+  it, and write rules are compared without regard to letter case there, so a worker is no longer refused
+  its own task folder. macOS and Linux behave as before.
 
 ## 0.1.0 (first public version)
 

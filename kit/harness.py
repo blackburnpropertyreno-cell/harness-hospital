@@ -1741,12 +1741,25 @@ SETUP_PARTS = ("config.json", "roles", "tools", "cases", "STATE.md", "check.py")
 
 
 def cmd_snapshot(args):
+    # Close the ledger connection explicitly: on Windows an open connection keeps the -wal/-shm files
+    # locked, so a following restore could not replace them.
+    opened = []
+    try:
+        _snapshot(args, opened)
+    finally:
+        for c in opened:
+            c.close()
+
+
+def _snapshot(args, opened):
     name = args.project or project_by_cwd(os.getcwd())
     if not name:
         raise HarnessError("Which project? Pass --project NAME.")
     root = project_root(name)
     cfg = load_config(root)
     con = connect(root) if ledger_path(root).exists() else None
+    if con is not None:
+        opened.append(con)
     if not args.setup:
         if con is None:
             raise HarnessError("This project has no ledger to copy. Use 'snapshot --setup' to copy its rules and role files.")
@@ -2217,9 +2230,12 @@ def role_rules(cfg, sess):
 
 
 def match_any(rel, patterns):
-    rel = rel.replace("\\", "/")
+    # On Windows, norm() lowercases paths (file names there are case-insensitive), so patterns such as
+    # ".harness/work/T1/*" must be compared the same way or a worker is refused its own task folder.
+    fold = (lambda s: s.lower()) if os.name == "nt" else (lambda s: s)
+    rel = fold(rel.replace("\\", "/"))
     for pat in patterns:
-        pat = pat.replace("\\", "/").replace("**", "*")
+        pat = fold(pat.replace("\\", "/").replace("**", "*"))
         if fnmatch.fnmatchcase(rel, pat) or fnmatch.fnmatchcase(rel, pat.rstrip("/*") + "/*") or rel == pat.rstrip("/*"):
             return True
     return False
@@ -2251,11 +2267,14 @@ def write_allowed(root, cfg, sess, target):
         return False, ("%s is outside project %s. While you work in this harness, write only in your task folder; "
                        "if this file is really needed there, ask the owner with the 'ask' command." % (target, cfg.get("project"))), "write:outside-project"
     rel = os.path.relpath(norm(target), norm(root)).replace("\\", "/")
-    generated = (rel.startswith(".harness/ledger.sqlite") or rel in (".harness/STATUS.md", ".harness/dashboard.html")
-                 or rel.startswith(".harness/handoff/") or rel.startswith(".harness/local/")
-                 or rel.startswith(".harness/snapshots/"))
-    owner_files = (rel == ".harness/config.json" or rel.startswith(".harness/roles/")
-                   or rel.startswith(".harness/cases/") or rel.startswith(".harness/tools/"))
+    # norm() lowercases on Windows only; compare the same way there. On macOS/Linux this changes nothing.
+    rc = rel.lower() if os.name == "nt" else rel
+    status_md = ".harness/status.md" if os.name == "nt" else ".harness/STATUS.md"
+    generated = (rc.startswith(".harness/ledger.sqlite") or rc in (status_md, ".harness/dashboard.html")
+                 or rc.startswith(".harness/handoff/") or rc.startswith(".harness/local/")
+                 or rc.startswith(".harness/snapshots/"))
+    owner_files = (rc == ".harness/config.json" or rc.startswith(".harness/roles/")
+                   or rc.startswith(".harness/cases/") or rc.startswith(".harness/tools/"))
     if generated or (owner_files and role != "guest"):
         return False, ("%s belongs to the harness. The ledger and status files change only through the ledger "
                        "command (editing a status file changes nothing: it is regenerated). Rules, role files, "
