@@ -1,6 +1,6 @@
 ---
 name: harness-surgery
-description: Reconfigure a multi-session project whose existing harness is wrong - a hand-built arrangement (status files edited by hand, a chat session acting as coordinator, rules that live only in prompts, several places holding the project's state) or an installed harness kit that no longer fits the work. Diagnoses it, writes a plan for the owner to approve, takes an undo point, rebuilds the setup, brings the open work across, retires the old arrangement, proves the result and records what was done. Use this when the user says "harness surgery", or wants an existing setup fixed, rebuilt, overhauled, migrated or reconfigured rather than reviewed, or wants a doctor's report carried out in full. For a project that is just starting use harness-triage; for a review that changes nothing, or a setup that only needs tweaks, use harness-doctor.
+description: Reconfigure a multi-session project whose existing harness is wrong - a hand-built arrangement (status files edited by hand, a chat session acting as coordinator, rules that live only in prompts, several places holding the project's state) or an installed harness kit that no longer fits the work. Diagnoses it, writes a plan for the owner to approve, takes an undo point, rebuilds the setup, brings the open work across, retires the old arrangement, proves the result and records what was done. Use this when the user says "harness surgery", or wants an existing setup fixed, rebuilt, overhauled, migrated or reconfigured rather than reviewed, or wants a doctor's report carried out in full. For a project that is just starting use harness-triage; for a review that changes nothing, or a setup that only needs tweaks, use harness-doctor; for a mess spread over many folders that nobody can see whole yet, run harness-xray first.
 argument-hint: "[project name or folder]"
 ---
 
@@ -10,10 +10,11 @@ The owner has chosen this skill because they believe the project's current arran
 changed, not reviewed. Take that as the starting point. Your job is to find out exactly what is wrong, agree
 a plan, and then carry out the whole reconfiguration while the project's work and data stay safe.
 
-Three skills cover three situations, and the choice of skill is the owner telling you which one this is:
+Four skills cover four situations, and the choice of skill is the owner telling you which one this is:
 
 | Situation | Skill | Stance |
 |---|---|---|
+| The project is scattered and nobody can see it whole | harness-xray | Look; change nothing |
 | A project that is starting | harness-triage | Build |
 | A running project that may need adjusting | harness-doctor | Review; change nothing |
 | An existing arrangement that is wrong | this one | Change it, with the owner's consent |
@@ -27,7 +28,7 @@ You will lean on the other two skills' reference files rather than repeat them:
 
 - What to look for: `{{SKILLS}}/harness-doctor/references/checks.md`
 - How to build each part: the files in `{{SKILLS}}/harness-triage/references/` (`principles.md`, `tiers.md`,
-  `ledger.md`, `checking.md`, `hooks.md`, `roles.md`, `handoff.md`)
+  `ledger.md`, `checking.md`, `hooks.md`, `roles.md`, `handoff.md`, `gathering.md`)
 
 ## Why this is riskier than a new setup
 
@@ -47,6 +48,15 @@ those two outcomes.
    - who or what checks results, and whether the author is grading its own work
    - which rules exist only as sentences in a prompt or a document
    - how the owner finds out what each session is doing, and what they end up doing by hand
+
+   If the project is spread over several folders, establish the whole picture before planning: which
+   folder is the home, what each other folder is, and which of any drifted copies is the master. Start
+   from an x-ray report if there is one (`.harness/xray/` in the home, or one the owner gives you). With
+   more than two or three folders and no report, recommend `/harness-xray` first, in its own session; it
+   is read-only and its report is what you plan from. Surgery run from one folder, blind to the other
+   twelve, rebuilds a corner of the project and leaves the mess standing. Two folders that each hold a
+   harness are two ledgers for one project: one becomes the home, and the other's open work is brought
+   across like a hand-built arrangement's.
 
    Also establish what works. A project that has been running has parts worth keeping: a checker script,
    careful source rules, specialist roles, a habit of logging disagreements. List them. Surgery that
@@ -103,7 +113,9 @@ those two outcomes.
       `--specialty trial`, so it takes only trial tasks and real workers never take them. When the proof is
       done, `H --project <name> trial-clear --yes` cancels the trial rows and closes the trial sessions,
       and recorded case results stay.
-   4. Bring the work into the new arrangement. Hand-built: `references/bringing-work-across.md`. With a
+   4. Bring the work into the new arrangement. If folders are being gathered into the home, do that
+      first, as `{{SKILLS}}/harness-triage/references/gathering.md` describes: copy in, check each copy,
+      leave the originals. Hand-built: `references/bringing-work-across.md`. With a
       kit, the work is already in the ledger and stays there; repair it in place as
       `references/operations.md` describes.
    5. Retire the old arrangement, as agreed in the plan. This step is what makes it surgery. Hand-built:
@@ -148,7 +160,7 @@ or so. Put that in the handover.
 ## Constraints, and why
 
 - **Nothing changes before the owner agrees to the plan.** This is their running project.
-- **Never delete.** Freeze, archive or leave in place. Disk space is cheap and a deleted record is not recoverable.
+- **Never delete, and never move.** Freeze, archive, copy or leave in place. Disk space is cheap and a deleted record is not recoverable.
 - **Do not touch the project's data.** The harness lives in `.harness/`. Protect the data in the rules file before any session starts.
 - **Each edit to an existing project file is agreed individually** in the plan, and the original is copied first.
 - **Ask before installing hooks,** and prefer the project's settings to the user's.

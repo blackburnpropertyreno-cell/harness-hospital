@@ -70,6 +70,9 @@ Reconfiguring: `H snapshot --setup` makes an undo point of the rules, roles, too
 `H trial-clear` removes a labelled trial from a ledger that holds real work, and `H unregister` stops this
 computer treating a folder as a harness project.
 
+Before there is a project: `H survey <folders...>` is a read-only inventory of one or more folders, for
+work that is spread out. It needs no project and writes nothing. See `gathering.md`.
+
 Run any of them with `--help` for its options. A command run by a session that has joined knows who is
 calling, from the session ID that Claude Code puts in the environment. The owner, or a session that has not
 joined, passes `--project <name>`. For testing, the environment variable `HARNESS_SESSION_ID` overrides the

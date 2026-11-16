@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SCHEMA_VERSION = 1
 SUMMARY_MAX = 300
 NOTE_MAX = 500
@@ -510,7 +510,7 @@ def cmd_init(args):
     if not root.is_dir():
         raise HarnessError("Folder does not exist: %s" % root)
     h = hdir(root)
-    for sub in ("work", "roles", "snapshots", "handoff", "local", "cases", "notes", "reviews", "doctor", "tools", "surgery"):
+    for sub in ("work", "roles", "snapshots", "handoff", "local", "cases", "notes", "reviews", "doctor", "tools", "surgery", "xray"):
         (h / sub).mkdir(parents=True, exist_ok=True)
     tdir = Path(__file__).resolve().parent / "templates"
     gi = h / ".gitignore"
@@ -2545,6 +2545,269 @@ def hooks_scope(root=None):
     return "none"
 
 
+# ---------------------------------------------------------------- survey (read-only inventory of folders)
+
+STATE_WORDS = ("status", "state", "todo", "claims", "handoff", "hand-off", "progress", "tracker", "queue",
+               "notes", "plan", "roadmap", "backlog", "log", "decisions", "contract", "brief", "readme", "claude")
+SYNC_MARKERS = ("Mobile Documents", "iCloud", "Dropbox", "OneDrive", "Google Drive", "GoogleDrive", "CloudStorage")
+SURVEY_SKIP = {".git", "node_modules", "__pycache__", ".venv", "venv", ".harness", ".Trash"}
+DATA_EXT = (".sqlite", ".sqlite3", ".db", ".duckdb", ".parquet")
+SAME_NAME_NOISE = ("readme", "license", "changelog", "contributing")
+SECRET_NAMES = (".env", ".secrets", ".netrc", "credentials", "secrets.", "id_rsa", "id_ed25519")
+SECRET_EXT = (".pem", ".key", ".p12", ".pfx", ".keystore")
+HASH_LIMIT = 256 * 1024 * 1024
+
+
+def file_digest(path, size):
+    """Content fingerprint used to tell an identical copy from a drifted one, or None when the file is too
+    large or cannot be read. Reads the file; never writes."""
+    try:
+        limit = int(os.environ.get("HARNESS_HASH_LIMIT") or HASH_LIMIT)
+    except ValueError:
+        limit = HASH_LIMIT
+    if size > limit:
+        return None
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(block)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def git_has_commits(folder):
+    g = Path(folder) / ".git"
+    try:
+        if (g / "packed-refs").exists():
+            return True
+        heads = g / "refs" / "heads"
+        return heads.is_dir() and any(True for _ in heads.rglob("*") if _.is_file())
+    except OSError:
+        return False
+
+
+def sync_service_for(real):
+    """Name of the file-sync service a folder appears to be in, or None. A None is not proof that it is unsynced."""
+    parts = real.replace("\\", "/").split("/")
+    low = real.lower()
+    for mark in SYNC_MARKERS:
+        if mark.lower() in low:
+            if mark in ("Mobile Documents", "iCloud") and any(x.endswith(".nosync") for x in parts):
+                return None
+            return mark
+    if sys.platform == "darwin" and not any(x.endswith(".nosync") for x in parts):
+        # With "Desktop & Documents Folders" on, iCloud Drive holds links back to the plain folders,
+        # so the path looks ordinary while its contents are synced.
+        drive = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+        for name in ("Desktop", "Documents"):
+            link = drive / name
+            try:
+                if link.is_symlink() and is_inside(real, os.path.realpath(str(link))):
+                    return "iCloud (Desktop and Documents folders)"
+            except OSError:
+                pass
+    return None
+
+
+def git_remote(folder):
+    """The first remote address in a repository's settings, with any sign-in details removed."""
+    cfg = Path(folder) / ".git" / "config"
+    try:
+        for line in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if line.startswith("url") and "=" in line:
+                url = line.split("=", 1)[1].strip()
+                return re.sub(r"//[^/@]+@", "//", url)
+    except OSError:
+        pass
+    return None
+
+
+def survey_folder(folder, limit):
+    folder = Path(folder).expanduser()
+    info = {"path": str(folder), "exists": folder.is_dir(), "files": 0, "bytes": 0, "newest": None, "newest_file": None,
+            "git": False, "harness": False, "claude_settings": False, "sync_service": None, "state_files": [],
+            "databases": [], "by_type": {}, "truncated": False, "recent_30d": 0, "index": {}, "names": {},
+            "git_remote": None, "git_commits": False, "secret_files": []}
+    if not info["exists"]:
+        return info
+    real = os.path.realpath(str(folder))
+    info["sync_service"] = sync_service_for(real)
+    info["git"] = (folder / ".git").exists()
+    info["git_remote"] = git_remote(folder) if info["git"] else None
+    info["git_commits"] = git_has_commits(folder) if info["git"] else False
+    info["harness"] = any((folder / ".harness" / n).exists() for n in ("ledger.sqlite", "config.json", "STATE.md"))
+    info["claude_settings"] = (folder / ".claude").is_dir()
+    cutoff = time.time() - 30 * 86400
+    newest = 0.0
+    for dirpath, dirnames, filenames in os.walk(str(folder)):
+        dirnames[:] = [d for d in dirnames if d not in SURVEY_SKIP]
+        depth = os.path.relpath(dirpath, str(folder)).count(os.sep) + (0 if dirpath == str(folder) else 1)
+        for fn in filenames:
+            if fn in (".DS_Store", "Thumbs.db"):
+                continue
+            p = os.path.join(dirpath, fn)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            info["files"] += 1
+            info["bytes"] += st.st_size
+            if st.st_mtime > newest:
+                newest, info["newest_file"] = st.st_mtime, os.path.relpath(p, str(folder)).replace("\\", "/")
+            if st.st_mtime >= cutoff:
+                info["recent_30d"] += 1
+            ext = os.path.splitext(fn)[1].lower() or "(none)"
+            info["by_type"][ext] = info["by_type"].get(ext, 0) + 1
+            rel = os.path.relpath(p, str(folder)).replace("\\", "/")
+            low = fn.lower()
+            if low.startswith(SECRET_NAMES) or ext in SECRET_EXT:
+                info["secret_files"].append(rel)
+            elif ext in DATA_EXT:
+                info["databases"].append("%s (%s)" % (rel, human_size(st.st_size)))
+                info["names"].setdefault(low, (st.st_size, st.st_mtime, rel))
+            elif depth <= 2 and ext in (".md", ".txt", ".json", ".csv", ".xlsx", "(none)") and any(w in low for w in STATE_WORDS):
+                info["state_files"].append((st.st_mtime, rel))
+                if not low.startswith(SAME_NAME_NOISE):
+                    info["names"].setdefault(low, (st.st_size, st.st_mtime, rel))
+            if st.st_size >= 256:
+                info["index"][(fn, st.st_size)] = rel
+            if info["files"] >= limit:
+                info["truncated"] = True
+                break
+        if info["truncated"]:
+            break
+    info["newest"] = datetime.fromtimestamp(newest).strftime("%Y-%m-%d") if newest else None
+    info["state_files"] = [r for _, r in sorted(info["state_files"], reverse=True)][:12]
+    info["databases"] = info["databases"][:8]
+    info["secret_files"] = sorted(info["secret_files"])[:12]
+    return info
+
+
+def human_size(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return ("%d %s" % (n, unit)) if unit == "B" else ("%.1f %s" % (n, unit))
+        n /= 1024.0
+
+
+def cmd_survey(args):
+    """Read-only. Says what is in a set of folders so a scattered project can be understood before anything moves."""
+    infos = [survey_folder(f, args.limit) for f in args.folders]
+    overlaps, diverged = [], []
+    for i in range(len(infos)):
+        for j in range(i + 1, len(infos)):
+            a, b = infos[i], infos[j]
+            if not a["exists"] or not b["exists"]:
+                continue
+            ra, rb = os.path.realpath(a["path"]), os.path.realpath(b["path"])
+            if is_inside(rb, ra) or is_inside(ra, rb):
+                overlaps.append({"a": a["path"], "b": b["path"], "nested": True, "shared": 0, "examples": []})
+                continue
+            shared = set(a["index"]) & set(b["index"])
+            if shared:
+                smaller = min(len(a["index"]), len(b["index"])) or 1
+                overlaps.append({"a": a["path"], "b": b["path"], "nested": False, "shared": len(shared),
+                                 "share_of_smaller": round(100.0 * len(shared) / smaller),
+                                 "examples": sorted(a["index"][k] for k in list(shared)[:400])[:4]})
+    nested_in = set()
+    for o in overlaps:
+        if o["nested"]:
+            ra, rb = os.path.realpath(o["a"]), os.path.realpath(o["b"])
+            nested_in.add(o["b"] if is_inside(rb, ra) else o["a"])
+    by_name = {}
+    for info in infos:
+        if info["path"] in nested_in:
+            continue
+        for name, (size, mtime, rel) in info["names"].items():
+            by_name.setdefault(name, []).append((mtime, size, info["path"], rel))
+    for name in sorted(by_name):
+        copies = sorted(by_name[name], reverse=True)
+        if len(copies) < 2:
+            continue
+        digests = [file_digest(os.path.join(f, rel), size) for mtime, size, f, rel in copies]
+        if len(set(digests)) < 2 and None not in digests:
+            continue
+        letters = {None: "?"}
+        for d in digests:
+            letters.setdefault(d, chr(ord("A") + len(letters) - 1) if len(letters) <= 26 else "?")
+        diverged.append({"name": os.path.basename(copies[0][3]), "versions": len(set(d for d in digests if d)),
+                         "not_compared": digests.count(None),
+                         "copies": [{"version": letters[d], "folder": f, "file": rel, "size": size,
+                                     "changed": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")}
+                                    for (mtime, size, f, rel), d in zip(copies, digests)]})
+    incomplete = any(i["truncated"] for i in infos)
+    for info in infos:
+        info.pop("index", None)
+        info.pop("names", None)
+    if args.json:
+        print(json.dumps({"folders": infos, "overlaps": overlaps, "diverged": diverged,
+                          "comparison_incomplete": incomplete}, indent=1))
+        return
+    print("SURVEY of %d folder(s). Nothing was changed. This reads file names, sizes and dates, and compares the "
+          "content of same-named databases and status-like files." % len(infos))
+    for info in infos:
+        print("\n%s" % info["path"])
+        if not info["exists"]:
+            print("  NOT FOUND")
+            continue
+        git_text = "git repository%s%s" % ("" if info["git_commits"] else " with no commits yet (so no history)",
+                                           " (%s)" % info["git_remote"] if info["git_remote"] else "")
+        flags = [x for x, on in ((git_text, info["git"]),
+                                 ("has a harness (.harness)", info["harness"]), ("no harness here", not info["harness"]),
+                                 ("has Claude Code settings (.claude)", info["claude_settings"])) if on]
+        print("  %d files, %s%s" % (info["files"], human_size(info["bytes"]),
+                                   " (stopped counting at the limit; use --limit to raise it)" if info["truncated"] else ""))
+        print("  last changed %s (%s); %d file(s) changed in the last 30 days" % (
+            info["newest"] or "never", info["newest_file"] or "-", info["recent_30d"]))
+        if flags:
+            print("  " + "; ".join(flags))
+        if info["sync_service"]:
+            print("  WARNING: appears to be in a file-sync service folder (%s). A database being written here can be corrupted." % info["sync_service"])
+        top = sorted(info["by_type"].items(), key=lambda kv: -kv[1])[:6]
+        print("  mostly: " + ", ".join("%s x%d" % kv for kv in top))
+        if info["databases"]:
+            print("  databases: " + "; ".join(info["databases"]))
+        if info["state_files"]:
+            print("  files that look like status, notes or instructions (newest first):")
+            for r in info["state_files"]:
+                print("    " + r)
+        if info["secret_files"]:
+            print("  may hold secrets (not opened; do not open or copy without asking): " + ", ".join(info["secret_files"]))
+    if overlaps:
+        print("\nOVERLAPS between folders")
+        for o in overlaps:
+            if o["nested"]:
+                print("  %s and %s: one is inside the other" % (o["a"], o["b"]))
+            else:
+                print("  %s and %s: %d file(s) with the same name and size (%d%% of the smaller folder), e.g. %s" % (
+                    o["a"], o["b"], o["shared"], o["share_of_smaller"], ", ".join(o["examples"])))
+        print("  Files with the same name and size are probably copies. Before anything else, settle which copy is the master.")
+    else:
+        print("\nNo overlaps found between these folders.")
+    if diverged:
+        print("\nSAME NAME, DIFFERENT CONTENT (databases and status-like files)")
+        for d in diverged[:20]:
+            print("  %s: %d files, %s" % (d["name"], len(d["copies"]),
+                                        ("%d different versions" % d["versions"]) if not d["not_compared"] else
+                                        "%d not compared (too large or unreadable), so they may or may not match" % d["not_compared"]))
+            for c in d["copies"]:
+                print("    %s  %9s  changed %s  %s/%s" % (c["version"], human_size(c["size"]), c["changed"], c["folder"], c["file"]))
+        if len(diverged) > 20:
+            print("  ... and %d more; use --json for the full list" % (len(diverged) - 20))
+        print("  Files with the same letter have identical content. Different letters have drifted apart, or the files "
+              "only share a name. '?' was not compared. The most recently changed is not always the master: ask.")
+    if len([i for i in infos if i["harness"]]) > 1:
+        print("\nMORE THAN ONE HARNESS: %s each have their own. A project has one ledger; this needs /harness-surgery."
+              % ", ".join(i["path"] for i in infos if i["harness"]))
+    if incomplete:
+        print("\nINCOMPLETE: at least one folder hit the file limit, so copies and same-name files may have been missed there.")
+    print("\nDates are a hint only: copying, syncing and git checkouts reset them. "
+          "No sync warning does not prove a folder is unsynced.")
+
+
 # ---------------------------------------------------------------- install check
 
 def cmd_check_install(args):
@@ -2739,6 +3002,10 @@ def build_parser():
     sp.add_argument("--no-pull", action="store_true")
     sp = add("reset", cmd_reset, "archive the ledger and start an empty one (for clearing a trial run)")
     sp.add_argument("--yes", action="store_true")
+    sp = add("survey", cmd_survey, "read-only inventory of one or more folders, for a project that is spread out")
+    sp.add_argument("folders", nargs="+", help="the folders to look at")
+    sp.add_argument("--json", action="store_true", help="machine-readable output")
+    sp.add_argument("--limit", type=int, default=200000, help="stop counting a folder after this many files")
     add("check-install", cmd_check_install, "check that the kit and hooks are installed")
     return p
 

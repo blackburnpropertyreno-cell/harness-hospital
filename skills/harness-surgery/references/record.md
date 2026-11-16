@@ -22,6 +22,11 @@ Give it in your reply. Save it as `.harness/surgery/<YYYY-MM-DD>-plan.md` after 
 ## Changes
 <Every change, numbered, in the order they will be made. For each: what, and why in a line.>
 
+## Folders
+<Only when the project is spread over more than one. Each folder the owner named: what it is, its fate
+(home, copied in, left as reference, left alone), where its copy will go, and which of any drifted copies
+is the master.>
+
 ## Existing files I would edit
 <Each one, what the edit is, and that the original is copied first. The owner can strike any of these.>
 
@@ -69,7 +74,8 @@ coordinator and its timer, the reviewer, the workers and any specialist, and whe
 <A table: each old item and what it became. Then what was left out, with reasons.>
 
 ## Old arrangement
-<Each old place for state: frozen, repointed, switched off, or kept, and where to look now.>
+<Each old place for state: frozen, repointed, switched off, or kept, and where to look now. When folders
+were gathered: each one, where its copy is, how the copy was checked, and whether the original is retired.>
 
 ## Not verified
 <Earlier results that predate the checking. Parts of the proof that could not be run. That the trial ran

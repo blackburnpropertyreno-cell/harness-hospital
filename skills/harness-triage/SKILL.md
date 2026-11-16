@@ -1,6 +1,6 @@
 ---
 name: harness-triage
-description: Assess a project that is starting and may need several Claude sessions or agents working over hours or days, decide how much working environment (a "harness") it needs - none, lite or full - and set it up: a shared ledger, hooks, a coordinator, workers, a reviewer, and a handoff routine between computers. Use this whenever the user wants to start or organise a new multi-session, multi-agent or multi-day project, asks for a coordinator and workers, asks "does this need a harness", wants to add a second computer to an existing harness project, or says "harness triage" or "harness setup". Also use it to decide that a job does NOT need a harness. For a project that already has an arrangement which is wrong, use harness-surgery instead.
+description: Assess a project that is starting and may need several Claude sessions or agents working over hours or days, decide how much working environment (a "harness") it needs - none, lite or full - and set it up: a shared ledger, hooks, a coordinator, workers, a reviewer, and a handoff routine between computers. Use this whenever the user wants to start or organise a new multi-session, multi-agent or multi-day project, asks for a coordinator and workers, asks "does this need a harness", wants to add a second computer to an existing harness project, or says "harness triage" or "harness setup". Also use it to decide that a job does NOT need a harness. For a project that already has an arrangement which is wrong, use harness-surgery instead. For material spread over many folders that nobody can see whole, run harness-xray first.
 argument-hint: "[project name or folder]"
 ---
 
@@ -58,6 +58,12 @@ Read `references/principles.md` when a decision is not obvious, or when the work
    own (status files edited by hand, a chat acting as coordinator), this is the wrong skill: tell the owner
    that changing an existing arrangement is what `/harness-surgery` is for, and stop.
 
+   If the project's material is spread over several folders, it has to come into one home folder before
+   the rest of this can work. Start from an x-ray report if there is one (`.harness/xray/` in the home, or
+   one the owner gives you); for more than two or three folders without one, recommend `/harness-xray`
+   first. Then follow `references/gathering.md`: copy in, never move, and agree each folder's fate with the
+   owner before copying anything.
+
 3. **Create it.** `H init <name> --path <project folder> --tier lite` or `--tier full`. Lite creates one
    state file and a checker stub. Full creates the ledger, rules file, role files and views. Write the
    project's goal, in a sentence or two, into the `goal` field of the rules file: the coordinator needs it
@@ -106,7 +112,7 @@ Read `references/principles.md` when a decision is not obvious, or when the work
 ## Constraints, and why
 
 - **Ask before installing hooks, and prefer the project's settings to the user's.** User-wide hooks touch every session on the computer; that is the owner's decision.
-- **Do not move, rename or delete the project's existing files.** A setup that damages the project has failed before it started.
+- **Do not move, rename or delete the project's existing files.** A setup that damages the project has failed before it started. Bringing scattered folders together means copying in; the originals stay as they are.
 - **Flag a project folder that sits inside iCloud, Dropbox or OneDrive.** Sync services corrupt databases that are being written to and create conflicting copies. Recommend moving it; do not move it yourself.
 - **Keep secrets out of the rules file and the ledger,** and agree what else may travel. Snapshots and handoffs copy the ledger; a save command copies whatever it is told to, which can include task folders full of downloads or licensed material.
 - **When torn between two tiers, start with the lower one.** Adding a part later is easy; an oversized harness costs effort on every task.

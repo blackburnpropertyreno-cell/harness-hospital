@@ -8,6 +8,9 @@ That can be a **hand-built arrangement**: status files edited by hand, a chat se
 coordinator, rules that live only in prompts, the project's state written in several places. Or it can be a
 **set-up made with this kit** that no longer fits the work.
 
+If the project is spread over several folders, run [x-ray](xray.md) first. Surgery then plans from its
+report: each folder gets a fate in the plan, and folders are gathered into one home by copying, never moving.
+
 ## What it does
 
 The two ways this kind of change goes wrong are losing work during the change, and leaving the old

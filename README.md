@@ -28,13 +28,15 @@ You do need to be comfortable installing a Python script and running a few comma
 
 It is not for a job one session can finish in an afternoon. The first skill will tell you so.
 
-## The three skills
+## The four skills
 
 Think of a hospital. You arrive, someone decides how much care you need, you get a check-up later, and if
-something is badly wrong you go into surgery.
+something is badly wrong you go into surgery. And when nobody can tell what is wrong, they take a picture
+first.
 
 | Skill | Reach for it when | What it does |
 |---|---|---|
+| **`/harness-xray`** | The project is a **mess spread over several folders** and you cannot see it whole | Looks at every folder you name and changes nothing. Says what each one is, which copies have drifted apart, whether it is one project or several, where it should live, and which of the other three to run next. |
 | **`/harness-triage`** | A project is **starting** | Asks about the work and decides how much harness it needs: **none**, **lite** (one shared state file and a checking script) or **full** (a shared record, hooks, a coordinator, workers and a reviewer). Then sets that up and proves it on one small task. |
 | **`/harness-doctor`** | A project is **running** and you want a check-up, or a few tweaks | An independent review in a fresh session. Changes nothing. Writes a report that says what is working, what is not, and groups the recommended changes by how safely they can be applied. |
 | **`/harness-surgery`** | The current arrangement is **wrong** and needs reconfiguring | Works on a hand-built arrangement (notes files edited by hand, a chat acting as coordinator) or a kit set-up that no longer fits. Diagnoses, writes a plan, waits for your yes, takes an undo point, rebuilds, brings the open work across, retires the old arrangement and writes a record. |
@@ -42,7 +44,7 @@ something is badly wrong you go into surgery.
 There are also three short commands that put a session into a project with a role:
 **`/coordinator`**, **`/worker`** and **`/reviewer`**.
 
-Each skill has its own page: [triage](docs/triage.md), [doctor](docs/doctor.md),
+Each skill has its own page: [x-ray](docs/xray.md), [triage](docs/triage.md), [doctor](docs/doctor.md),
 [surgery](docs/surgery.md). How the parts fit together is in [how it works](docs/how-it-works.md).
 
 ## The six principles
@@ -107,8 +109,8 @@ python3 install.py --claude-dir DIR --harness-home DIR
 ### What installing changes on your computer
 
 - **Copies the kit** to `~/.harness/bin/`. If that folder already exists it is deleted and copied fresh.
-- **Copies six skills** to `~/.claude/skills/`: `harness-triage`, `harness-doctor`, `harness-surgery`,
-  `coordinator`, `worker` and `reviewer`. Each gets a small marker file, `.harness-kit`, so the installer
+- **Copies seven skills** to `~/.claude/skills/`: `harness-xray`, `harness-triage`, `harness-doctor`,
+  `harness-surgery`, `coordinator`, `worker` and `reviewer`. Each gets a small marker file, `.harness-kit`, so the installer
   knows it put it there. Paths and commands for your computer are filled into the skill files as they are
   copied.
 - **Skips any skill folder it did not install.** If you already have a skill called `worker`, it is left
@@ -144,6 +146,8 @@ into a project that is a git repository, `.claude/settings.local.json` is also a
 
 ## A first use
 
+0. If the project's files are spread over several folders, start with `/harness-xray` and name the
+   folders. It tells you where the project should live and what to run next.
 1. Open a new Claude Code session and type `/harness-triage`. Describe the project: what it is for, how
    long you expect it to take, whether you can judge the results yourself.
 2. Answer its questions. It will say which tier the project needs, and why. If the answer is **none**, it
@@ -184,11 +188,16 @@ into a project that is a git repository, `.claude/settings.local.json` is also a
 
 ## Honest status
 
-- **Early.** Version 0.1.0.
+- **Early.** Version 0.2.0.
 - Trialled by Claude agents on throwaway test projects, and by the scripted tests in `tests/`.
 - Three live runs on macOS confirmed that the hooks fire in real Claude Code sessions.
 - **Used once on a real project:** `/harness-surgery` reconfigured an existing project, and that run
   finished. No sessions have worked under the new set-up yet, so whether it helps is not yet known.
+- **`/harness-xray` is new in 0.2.0.** A Claude agent trialled it once on a made-up mess of thirteen
+  folders; its findings were then applied, and the corrected version has not been trialled again. It has
+  not been used on a real mess. The step that follows it, gathering the folders into one home during
+  triage or surgery, has not been trialled at all. Reports from real messes are the most useful thing you
+  can send.
 - **Never run on Windows.** It is written to be portable (standard library only, no shell-specific
   commands), but check `install.py --status` and your first session carefully before relying on it there.
 - Tested with **Claude Code 2.1.325** on macOS. Hooks depend on Claude Code's hook format, which may change.
@@ -203,7 +212,7 @@ kit/harness.py          the ledger command: the only way to change a project's l
 kit/hook.py             one script for every Claude Code hook event; does nothing outside a project
 kit/hooks_install.py    adds or removes the hooks in a settings file (one project's, or the user's)
 kit/templates/          role prompts and lite-tier files copied into a new project
-skills/                 the six skills
+skills/                 the seven skills
 docs/                   one page per skill, how it works, and security
 tests/                  scripted tests
 ```

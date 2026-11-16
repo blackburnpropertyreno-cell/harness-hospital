@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+
+- New skill: `/harness-xray`, a read-only look at a project spread over several folders. It says what each
+  folder is, which copies have drifted apart, whether it is one project or several, where it should live,
+  and which skill to run next. It changes nothing.
+- New ledger command: `survey <folders...>`, which the x-ray uses. It reads file names, sizes and dates,
+  and reads the content of same-named databases and status-like files to tell identical copies from
+  drifted ones. It needs no project, writes nothing, and does not open files whose names suggest secrets.
+- Triage and surgery now handle a scattered project: they start from the x-ray's report and gather the
+  folders into one home by copying, never moving (`skills/harness-triage/references/gathering.md`).
+- The surgery plan and record gain a section for the folders and what happened to each.
+
 ## 0.1.0 (first public version)
 
 - Three skills: `/harness-triage` (assess a starting project and set up none, lite or full),

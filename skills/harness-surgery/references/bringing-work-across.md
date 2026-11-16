@@ -7,6 +7,10 @@ place.
 
 ## Before changing anything
 
+- **If the project is spread over several folders,** gather it into the home first, following
+  `{{SKILLS}}/harness-triage/references/gathering.md`. Every step below assumes one folder. The state you
+  are about to list will be in several of them, and each folder's status file is a separate place for state.
+
 - **Find every place the project's state is written down:** status files, notes, a spreadsheet, a page in a
   notes app, a coordinator's conversation. This list is in the plan, and each item on it needs a fate.
 - **Find what already works and keep it.** An existing checker script becomes the `script` for a kind of

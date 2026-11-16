@@ -34,6 +34,10 @@ writes are refused. If writing the report is refused, run `H join <project> --ro
    you find yourself doing by hand? What have you stopped trusting? Their answers tell you where to look
    hardest.
 
+   If it turns out the project's work or state lives in several folders, say so at the top of the report
+   and recommend `/harness-xray`: the checks below assume one project folder, and a review of one folder
+   out of several will miss where the trouble is.
+
 2. **Gather evidence before forming a view.**
    - `H --project <name> metrics` for counts and timings
    - `H --project <name> board` and `H --project <name> log -n 200` for the current state and recent history.

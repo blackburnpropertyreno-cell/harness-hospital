@@ -4,6 +4,9 @@
 **Use it when:** a project is starting and may need several Claude sessions, or will run for more than a
 day.
 
+If the project's files are spread over several folders, run [x-ray](xray.md) first. Triage then starts from
+its report and gathers the folders into one home by copying, never moving.
+
 ## What it does
 
 It assesses the project and decides how much harness it needs, then sets that up. There are three sizes,

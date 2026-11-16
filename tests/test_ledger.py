@@ -370,6 +370,96 @@ def main():
         out = run(["unregister", "demo", "--yes"], env_extra=envb)
         ok("unregister leaves the folder alone", "no longer a harness project" in out and (proj_b / ".harness" / "config.json").exists())
         ok("the other computer's registration is untouched", "demo" in run(["projects"]))
+
+        # survey: a read-only look at folders that may hold one project between them
+        import hashlib
+        import time as _time
+
+        def tree_sum(top):
+            h = hashlib.sha256()
+            for dp, dn, fns in sorted(os.walk(str(top))):
+                dn.sort()
+                for fn in sorted(fns):
+                    fp = os.path.join(dp, fn)
+                    h.update(os.path.relpath(fp, str(top)).encode("utf-8"))
+                    h.update(open(fp, "rb").read())
+                    h.update(str(os.stat(fp).st_mtime).encode("utf-8"))
+            return h.hexdigest()
+
+        sv = tmp / "survey"
+        a, b, c = sv / "main copy", sv / "old copy", sv / "main copy" / "inner"
+        for d in (a, b, c):
+            d.mkdir(parents=True)
+        (a / "STATUS.md").write_text("status " + "a" * 2000, encoding="utf-8")
+        (b / "STATUS.md").write_text("status " + "b" * 900, encoding="utf-8")
+        (a / "results.sqlite").write_bytes(b"x" * 5000)
+        (b / "results.sqlite").write_bytes(b"x" * 3000)
+        (a / "paper.txt").write_text("p" * 4000, encoding="utf-8")
+        (b / "paper.txt").write_text("p" * 4000, encoding="utf-8")
+        (a / "README.md").write_text("r" * 1500, encoding="utf-8")
+        (b / "README.md").write_text("r" * 1200, encoding="utf-8")
+        (a / ".git").mkdir()
+        (a / ".env").write_text("KEY=CANARY-1234", encoding="utf-8")
+        (a / ".git" / "config").write_text('[remote "origin"]\n\turl = https://someone:secret-token@example.com/x/y.git\n', encoding="utf-8")
+        old_time = _time.time() - 200 * 86400
+        for f in b.iterdir():
+            os.utime(str(f), (old_time, old_time))
+        before = tree_sum(sv)
+        nowhere = tmp / "no-such-home"
+        env_none = {"HARNESS_HOME": str(nowhere)}
+        out = run(["survey", str(a), str(b), str(sv / "missing")], env_extra=env_none, cwd=str(tmp))
+        out0 = out
+        ok("survey runs with no kit home and no project", "SURVEY of 3 folder(s)" in out, out)
+        ok("survey changes nothing in the folders", tree_sum(sv) == before)
+        ok("survey creates no kit home", not nowhere.exists())
+        ok("survey reports a missing folder", "NOT FOUND" in out, out)
+        ok("survey finds probable copies", "same name and size" in out and "paper.txt" in out, out)
+        ok("survey flags a database that has drifted, and which is newer",
+           "SAME NAME, DIFFERENT CONTENT" in out and "results.sqlite: 2 files, 2 different versions" in out, out)
+        ok("survey flags a drifted status file but not a readme", "STATUS.md" in out.split("SAME NAME")[1]
+           and "readme" not in out.split("SAME NAME")[1], out)
+        ok("survey shows the repository address without sign-in details", "example.com/x/y.git" in out and "secret-token" not in out, out)
+        ok("survey sees the old copy as stale", "0 file(s) changed in the last 30 days" in out, out)
+        out = run(["survey", str(a), str(c)], env_extra=env_none)
+        ok("survey reports nested folders", "one is inside the other" in out, out)
+        out = run(["survey", str(a), str(b), "--limit", "2"], env_extra=env_none)
+        ok("survey says when the limit makes the comparison incomplete", "INCOMPLETE" in out and "stopped counting" in out, out)
+        data = json.loads(run(["survey", str(a), str(b), "--json"], env_extra=env_none))
+        ok("same-name files are grouped once, with a letter per version", len(data["diverged"]) == 2
+           and data["diverged"][0]["versions"] == 2 and [c["version"] for c in data["diverged"][0]["copies"]] == ["A", "B"],
+           data["diverged"])
+        ok("survey says a repository has no commits and that no harness was found",
+           "with no commits yet" in out0 and "no harness here" in out0, out0)
+        ok("survey names a file that may hold secrets without opening it", ".env" in out0 and "CANARY" not in out0, out0)
+        third = sv / "third"
+        third.mkdir()
+        (third / "STATUS.md").write_text("status " + "a" * 2000, encoding="utf-8")
+        (third / "results.sqlite").write_bytes(b"y" * 5000)
+        out3 = run(["survey", str(a), str(b), str(third)], env_extra=env_none)
+        ok("identical content shares a letter, and same size with different content does not",
+           "STATUS.md: 3 files, 2 different versions" in out3 and "results.sqlite: 3 files, 3 different versions" in out3, out3)
+        big = run(["survey", str(a), str(third)], env_extra={"HARNESS_HOME": str(nowhere), "HARNESS_HASH_LIMIT": "3000"})
+        ok("same-sized files too large to compare are not called identical",
+           "results.sqlite: 2 files, 2 not compared" in big and "STATUS.md:" not in big.split("SAME NAME")[1], big)
+        shutil.rmtree(str(third))
+        ok("survey --json is valid and complete", len(data["folders"]) == 2 and data["diverged"]
+           and data["overlaps"] and data["comparison_incomplete"] is False and "index" not in data["folders"][0])
+        ok("survey changed nothing after every run", tree_sum(sv) == before and not nowhere.exists())
+        (a / ".harness").mkdir()
+        (a / ".harness" / "xray").mkdir()
+        out = run(["survey", str(a)], env_extra=env_none)
+        ok("a saved x-ray report alone does not count as a harness", "has a harness" not in out, out)
+        for d in (a, b):
+            (d / ".harness").mkdir(exist_ok=True)
+            (d / ".harness" / "config.json").write_text("{}", encoding="utf-8")
+        out = run(["survey", str(a), str(b)], env_extra=env_none)
+        ok("survey names two harnesses as a surgery case", "MORE THAN ONE HARNESS" in out, out)
+        fresh = tmp / "fresh"
+        (fresh / ".harness" / "xray").mkdir(parents=True)
+        (fresh / ".harness" / "xray" / "2026-01-01.md").write_text("report", encoding="utf-8")
+        run(["init", "fresh", "--path", str(fresh)])
+        ok("init works where an x-ray report was saved first, and keeps it",
+           (fresh / ".harness" / "ledger.sqlite").exists() and (fresh / ".harness" / "xray" / "2026-01-01.md").read_text(encoding="utf-8") == "report")
         print("ledger tests passed: %d" % len(PASSED))
     finally:
         shutil.rmtree(str(tmp), ignore_errors=True)
